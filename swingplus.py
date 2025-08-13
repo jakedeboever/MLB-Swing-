@@ -1,10 +1,40 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 
 # Load data
 @st.cache_data
 def load_data():
     df = pd.read_csv("swing_plus_results.csv")
+
+    # 1. Round Swing Plus
+    if "Swing Plus" in df.columns:
+        df["Swing Plus"] = df["Swing Plus"].round(0).astype("Int64")
+
+    # 2. Reorder columns: Name, Swing Plus, xWOBA stats, then rest
+    col_order = []
+
+    if "Name" in df.columns:
+        col_order.append("Name")
+    if "Swing Plus" in df.columns:
+        col_order.append("Swing Plus")
+
+    xwoba_cols = [c for c in df.columns if "xWOBA" in c]
+    col_order.extend(xwoba_cols)
+
+    remaining_cols = [c for c in df.columns if c not in col_order]
+    col_order.extend(remaining_cols)
+
+    df = df[col_order]
+
+    # 3. Format numeric columns
+    for col in df.select_dtypes(include=[np.number]).columns:
+        if col != "Swing Plus":
+            if df[col].between(0, 1).all():
+                df[col] = df[col].round(3)
+            else:
+                df[col] = df[col].round(2)
+
     return df
 
 df = load_data()
@@ -27,7 +57,7 @@ if "Year" in df.columns:
     year_filter = st.selectbox("Filter by Year:", years)
 
 # Numeric stat filter
-numeric_columns = df.select_dtypes(include=['number']).columns.tolist()
+numeric_columns = df.select_dtypes(include=[np.number]).columns.tolist()
 stat_to_filter = st.selectbox("Select a stat to filter:", numeric_columns)
 min_val = float(df[stat_to_filter].min())
 max_val = float(df[stat_to_filter].max())
