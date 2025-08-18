@@ -9,6 +9,16 @@ def load_data():
     df = pd.read_csv("swing_predictions.csv")
     # Create difference column
     df["xwoba_diff"] = df["xwobacon"] - df["predicted_xwobacon"]
+    # Round swing_plus to whole number
+    if "swing_plus" in df.columns:
+        df["swing_plus"] = df["swing_plus"].round(0).astype(int)
+    # Round xwobacons to 3 decimals
+    if "xwobacon" in df.columns:
+        df["xwobacon"] = df["xwobacon"].round(3)
+    if "predicted_xwobacon" in df.columns:
+        df["predicted_xwobacon"] = df["predicted_xwobacon"].round(3)
+    if "xwoba_diff" in df.columns:
+        df["xwoba_diff"] = df["xwoba_diff"].round(3)
     # Reorder columns
     cols = [
         "last_name, first_name",
