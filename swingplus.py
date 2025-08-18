@@ -1,5 +1,6 @@
 import pandas as pd
 import streamlit as st
+import plotly.express as px
 
 @st.cache_data
 def load_data():
@@ -43,15 +44,25 @@ st.title("MLB Swing+ Dashboard")
 # Sidebar filters
 st.sidebar.header("Filters")
 
-# --- Categorical filters ---
-categorical_cols = df.select_dtypes(include=["object"]).columns.tolist()
-for col in categorical_cols:
-    options = df[col].dropna().unique().tolist()
-    options.sort()
-    selected = st.sidebar.multiselect(f"Select {col}", options, default=options)
-    df = df[df[col].isin(selected)]
+# --- Search bar ---
+search_query = st.sidebar.text_input("Search Player")
+if search_query:
+    df = df[df["player_name"].str.contains(search_query, case=False, na=False)]
 
-# --- Numeric filters ---
+# --- Team filter (multiselect but defaults to ALL) ---
+if "team" in df.columns:
+    team_options = df["team"].dropna().unique().tolist()
+    team_options.sort()
+    selected_teams = st.sidebar.multiselect("Select Teams", team_options, default=team_options)
+    df = df[df["team"].isin(selected_teams)]
+
+# --- Season filter (multiselect but defaults to ALL) ---
+if "season" in df.columns:
+    season_options = sorted(df["season"].dropna().unique().tolist())
+    selected_seasons = st.sidebar.multiselect("Select Seasons", season_options, default=season_options)
+    df = df[df["season"].isin(selected_seasons)]
+
+# --- Numeric filters (sliders, default = full range) ---
 st.sidebar.subheader("Numeric Filters")
 numeric_cols = df.select_dtypes(include="number").columns.tolist()
 for col in numeric_cols:
@@ -69,7 +80,20 @@ for col in numeric_cols:
     )
     df = df[(df[col] >= sel_min) & (df[col] <= sel_max)]
 
-# Display table
+# --- Data table ---
 st.subheader("Filtered Data")
 st.dataframe(df)
 
+# --- Scatter plot ---
+st.subheader("Scatter Plot")
+numeric_choices = df.select_dtypes(include="number").columns.tolist()
+if len(numeric_choices) >= 2:
+    x_axis = st.selectbox("X-axis", numeric_choices, index=0)
+    y_axis = st.selectbox("Y-axis", numeric_choices, index=1)
+    color_var = st.selectbox("Color By", ["team", "season", "player_name"], index=0)
+
+    fig = px.scatter(df, x=x_axis, y=y_axis, color=df[color_var] if color_var in df else None,
+                     hover_data=["player_name", "team", "season"])
+    st.plotly_chart(fig, use_container_width=True)
+else:
+    st.write("Not enough numeric columns for scatter plot.")
