@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from sklearn.metrics import r2_score
+import statsmodels.api as sm
 
 # Load data
 @st.cache_data
@@ -39,14 +39,6 @@ avg_by_player = st.sidebar.checkbox("Aggregate across all years per player")
 players = sorted(df["last_name, first_name"].dropna().unique())
 selected_players = st.sidebar.multiselect("Select Player(s)", players)
 
-# Player search
-search_term = st.sidebar.text_input("Search player by name")
-if search_term:
-    search_matches = [p for p in players if search_term.lower() in p.lower()]
-    if search_matches:
-        st.sidebar.write("Matches:", search_matches)
-        selected_players.extend(search_matches)
-
 # Apply filters
 filtered_df = df[df["year"].isin(selected_years)]
 if selected_players:
@@ -71,6 +63,11 @@ sort_asc = st.sidebar.radio("Order", ["Ascending", "Descending"]) == "Ascending"
 
 filtered_df = filtered_df.sort_values(by=sort_col, ascending=sort_asc)
 
+# Player search above table
+search_term = st.text_input("Search player by name")
+if search_term:
+    filtered_df = filtered_df[filtered_df["last_name, first_name"].str.contains(search_term, case=False, na=False)]
+
 # Show data
 st.dataframe(filtered_df, use_container_width=True)
 
@@ -92,15 +89,19 @@ if len(num_cols) >= 2:
         filtered_df,
         x=x_axis,
         y=y_axis,
-        hover_data=["last_name, first_name", "year"],
-        trendline="ols"
+        hover_data=["last_name, first_name", "year"]
     )
 
-    # Calculate R^2
+    # Fit regression line using statsmodels for stability
     try:
-        r2 = r2_score(filtered_df[y_axis], filtered_df[x_axis])
+        X = sm.add_constant(filtered_df[x_axis])
+        model = sm.OLS(filtered_df[y_axis], X).fit()
+        slope = model.params[x_axis]
+        intercept = model.params["const"]
+        r2 = model.rsquared
+        st.markdown(f"**Trendline equation:** y = {slope:.3f}x + {intercept:.3f}")
         st.markdown(f"**R² between {x_axis} and {y_axis}:** {r2:.3f}")
     except Exception as e:
-        st.warning(f"Could not calculate R²: {e}")
+        st.warning(f"Could not calculate trendline: {e}")
 
     st.plotly_chart(fig, use_container_width=True)
