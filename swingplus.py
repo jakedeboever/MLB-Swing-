@@ -8,6 +8,14 @@ import statsmodels.api as sm
 def load_data():
     df = pd.read_csv("merged_fangraphs_swing_clean.csv")
 
+    # Standardize column names
+    rename_map = {
+        "Name": "player_name",
+        "Season": "year",
+        "Team": "team"
+    }
+    df = df.rename(columns=rename_map)
+
     # Create difference column if available
     if {"xwobacon", "predicted_xwobacon"} <= set(df.columns):
         df["xwoba_diff"] = df["xwobacon"] - df["predicted_xwobacon"]
@@ -21,20 +29,21 @@ def load_data():
         if col in df.columns:
             df[col] = df[col].round(3)
 
-    # Reorder columns if they exist
-    cols = [
-        "last_name, first_name",
+    # Reorder columns with new naming
+    preferred_cols = [
+        "player_name",
         "year",
-        "team" if "team" in df.columns else None,
-        "swing_plus" if "swing_plus" in df.columns else None,
-        "xwobacon" if "xwobacon" in df.columns else None,
-        "predicted_xwobacon" if "predicted_xwobacon" in df.columns else None,
-        "xwoba_diff" if "xwoba_diff" in df.columns else None,
+        "team",
+        "swing_plus",
+        "xwobacon",
+        "predicted_xwobacon",
+        "xwoba_diff",
     ]
-    cols = [c for c in cols if c is not None]
+    cols = [c for c in preferred_cols if c in df.columns]
     remaining = [c for c in df.columns if c not in cols]
     df = df[cols + remaining]
     return df
+
 
 # Load the dataframe
 df = load_data()
@@ -44,10 +53,20 @@ st.title("Swing+ Explorer")
 # Sidebar filters
 st.sidebar.header("Filters")
 
-# Year filter with aggregation option
+# Year filter
 years = sorted(df["year"].dropna().unique())
 selected_years = st.sidebar.multiselect("Select Year(s)", years, default=years)
-avg_by_player = st.sidebar.checkbox("Aggregate across all years per player")
+
+# Aggregation options
+agg_option = st.sidebar.radio(
+    "Aggregation Mode",
+    [
+        "None (per player, per season)",
+        "Aggregate across all years per player",
+        "Aggregate by team per season",
+        "Aggregate by team across all seasons",
+    ]
+)
 
 # Team filter if available
 if "team" in df.columns:
@@ -57,20 +76,22 @@ else:
     selected_teams = []
 
 # Player name filter
-players = sorted(df["last_name, first_name"].dropna().unique())
+players = sorted(df["player_name"].dropna().unique())
 selected_players = st.sidebar.multiselect("Select Player(s)", players)
 
 # Apply filters
 filtered_df = df[df["year"].isin(selected_years)]
 if selected_players:
-    filtered_df = filtered_df[filtered_df["last_name, first_name"].isin(selected_players)]
+    filtered_df = filtered_df[filtered_df["player_name"].isin(selected_players)]
 if selected_teams:
     filtered_df = filtered_df[filtered_df["team"].isin(selected_teams)]
 
-# Aggregate by player if selected
-if avg_by_player:
+# Apply aggregation
+if agg_option == "Aggregate across all years per player":
     numeric_cols = filtered_df.select_dtypes(include="number").columns
-    filtered_df = filtered_df.groupby("last_name, first_name", as_index=False)[numeric_cols].mean()
+    filtered_df = (
+        filtered_df.groupby("player_name", as_index=False)[numeric_cols].mean()
+    )
     filtered_df["year"] = "All"
     if "swing_plus" in filtered_df.columns:
         filtered_df["swing_plus"] = filtered_df["swing_plus"].round().astype(int)
@@ -78,22 +99,49 @@ if avg_by_player:
         if col in filtered_df.columns:
             filtered_df[col] = filtered_df[col].round(3)
 
+elif agg_option == "Aggregate by team per season":
+    numeric_cols = filtered_df.select_dtypes(include="number").columns
+    filtered_df = (
+        filtered_df.groupby(["team", "year"], as_index=False)[numeric_cols].mean()
+    )
+    if "swing_plus" in filtered_df.columns:
+        filtered_df["swing_plus"] = filtered_df["swing_plus"].round().astype(int)
+    for col in ["xwobacon", "predicted_xwobacon", "xwoba_diff"]:
+        if col in filtered_df.columns:
+            filtered_df[col] = filtered_df[col].round(3)
+
+elif agg_option == "Aggregate by team across all seasons":
+    numeric_cols = filtered_df.select_dtypes(include="number").columns
+    filtered_df = filtered_df.groupby("team", as_index=False)[numeric_cols].mean()
+    filtered_df["year"] = "All"
+    if "swing_plus" in filtered_df.columns:
+        filtered_df["swing_plus"] = filtered_df["swing_plus"].round().astype(int)
+    for col in ["xwobacon", "predicted_xwobacon", "xwoba_diff"]:
+        if col in filtered_df.columns:
+            filtered_df[col] = filtered_df[col].round(3)
+
+
 # Numeric range filters
 st.sidebar.subheader("Numeric Filters")
 for col in filtered_df.select_dtypes(include="number").columns:
     min_val, max_val = float(filtered_df[col].min()), float(filtered_df[col].max())
     sel_min, sel_max = st.sidebar.slider(f"{col}", min_val, max_val, (min_val, max_val))
-    filtered_df = filtered_df[(filtered_df[col] >= sel_min) & (filtered_df[col] <= sel_max)]
+    filtered_df = filtered_df[
+        (filtered_df[col] >= sel_min) & (filtered_df[col] <= sel_max)
+    ]
 
 # Sorting
 sort_col = st.sidebar.selectbox("Sort by", filtered_df.columns, index=2)
 sort_asc = st.sidebar.radio("Order", ["Ascending", "Descending"]) == "Ascending"
 filtered_df = filtered_df.sort_values(by=sort_col, ascending=sort_asc)
 
-# Player search above table
-search_term = st.text_input("Search player by name")
-if search_term:
-    filtered_df = filtered_df[filtered_df["last_name, first_name"].str.contains(search_term, case=False, na=False)]
+# Player search above table (only if player_name column exists)
+if "player_name" in filtered_df.columns:
+    search_term = st.text_input("Search player by name")
+    if search_term:
+        filtered_df = filtered_df[
+            filtered_df["player_name"].str.contains(search_term, case=False, na=False)
+        ]
 
 # Show data
 st.dataframe(filtered_df, use_container_width=True)
@@ -103,7 +151,7 @@ st.download_button(
     label="Download filtered data as CSV",
     data=filtered_df.to_csv(index=False),
     file_name="filtered_swing_predictions.csv",
-    mime="text/csv"
+    mime="text/csv",
 )
 
 # Scatterplot option
@@ -112,11 +160,20 @@ num_cols = filtered_df.select_dtypes(include="number").columns
 if len(num_cols) >= 2:
     x_axis = st.selectbox("X-axis", num_cols, index=0)
     y_axis = st.selectbox("Y-axis", num_cols, index=1)
+
+    hover_cols = []
+    if "player_name" in filtered_df.columns:
+        hover_cols.append("player_name")
+    if "year" in filtered_df.columns:
+        hover_cols.append("year")
+    if "team" in filtered_df.columns:
+        hover_cols.append("team")
+
     fig = px.scatter(
         filtered_df,
         x=x_axis,
         y=y_axis,
-        hover_data=["last_name, first_name", "year"] + (["team"] if "team" in filtered_df.columns else [])
+        hover_data=hover_cols
     )
 
     # Fit regression line
@@ -132,4 +189,3 @@ if len(num_cols) >= 2:
         st.warning(f"Could not calculate trendline: {e}")
 
     st.plotly_chart(fig, use_container_width=True)
-
