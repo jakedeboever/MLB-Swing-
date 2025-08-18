@@ -34,8 +34,13 @@ years = sorted(df["year"].dropna().unique())
 selected_years = st.sidebar.multiselect("Select Year(s)", years, default=years)
 avg_by_player = st.sidebar.checkbox("Aggregate across all years per player")
 
-# Player name filter
+# Player search box
+player_search = st.sidebar.text_input("Search Player")
+
+# Player name filter (with search)
 players = sorted(df["last_name, first_name"].dropna().unique())
+if player_search:
+    players = [p for p in players if player_search.lower() in p.lower()]
 selected_players = st.sidebar.multiselect("Select Player(s)", players)
 
 # Apply filters
@@ -80,4 +85,4 @@ if len(num_cols) >= 2:
     x_axis = st.selectbox("X-axis", num_cols, index=0)
     y_axis = st.selectbox("Y-axis", num_cols, index=1)
     fig = px.scatter(filtered_df, x=x_axis, y=y_axis, hover_data=["last_name, first_name", "year"])
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig,
