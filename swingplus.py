@@ -11,7 +11,7 @@ def load_data():
     df["xwoba_diff"] = df["xwobacon"] - df["predicted_xwobacon"]
     # Round swing_plus to whole number
     if "swing_plus" in df.columns:
-        df["swing_plus"] = df["swing_plus"].apply(lambda x: int(round(x)))
+        df["swing_plus"] = df["swing_plus"].round().astype(int)
     # Round xwobacons to 3 decimals
     if "xwobacon" in df.columns:
         df["xwobacon"] = df["xwobacon"].round(3)
@@ -35,7 +35,7 @@ def load_data():
 # Load the dataframe
 df = load_data()
 
-st.title("Swing Predictions Explorer")
+st.title("Swing+ Explorer")
 
 # Sidebar filters
 st.sidebar.header("Filters")
@@ -59,6 +59,13 @@ if avg_by_player:
     numeric_cols = filtered_df.select_dtypes(include="number").columns
     filtered_df = filtered_df.groupby("last_name, first_name", as_index=False)[numeric_cols].mean()
     filtered_df["year"] = "All"
+    # Ensure swing_plus is whole number after aggregation
+    if "swing_plus" in filtered_df.columns:
+        filtered_df["swing_plus"] = filtered_df["swing_plus"].round().astype(int)
+    # Ensure xwobacons rounded after aggregation
+    for col in ["xwobacon", "predicted_xwobacon", "xwoba_diff"]:
+        if col in filtered_df.columns:
+            filtered_df[col] = filtered_df[col].round(3)
 
 # Numeric range filters
 st.sidebar.subheader("Numeric Filters")
