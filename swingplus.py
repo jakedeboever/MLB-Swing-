@@ -85,4 +85,4 @@ if len(num_cols) >= 2:
     x_axis = st.selectbox("X-axis", num_cols, index=0)
     y_axis = st.selectbox("Y-axis", num_cols, index=1)
     fig = px.scatter(filtered_df, x=x_axis, y=y_axis, hover_data=["last_name, first_name", "year"])
-    st.plotly_chart(fig,
+    st.plotly_chart(fig,)
