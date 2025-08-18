@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+from sklearn.metrics import r2_score
 
 # Load data
 @st.cache_data
@@ -34,14 +35,17 @@ years = sorted(df["year"].dropna().unique())
 selected_years = st.sidebar.multiselect("Select Year(s)", years, default=years)
 avg_by_player = st.sidebar.checkbox("Aggregate across all years per player")
 
-# Player search box
-player_search = st.sidebar.text_input("Search Player")
-
-# Player name filter (with search)
+# Player name filter
 players = sorted(df["last_name, first_name"].dropna().unique())
-if player_search:
-    players = [p for p in players if player_search.lower() in p.lower()]
 selected_players = st.sidebar.multiselect("Select Player(s)", players)
+
+# Player search
+search_term = st.sidebar.text_input("Search player by name")
+if search_term:
+    search_matches = [p for p in players if search_term.lower() in p.lower()]
+    if search_matches:
+        st.sidebar.write("Matches:", search_matches)
+        selected_players.extend(search_matches)
 
 # Apply filters
 filtered_df = df[df["year"].isin(selected_years)]
@@ -84,5 +88,19 @@ num_cols = filtered_df.select_dtypes(include="number").columns
 if len(num_cols) >= 2:
     x_axis = st.selectbox("X-axis", num_cols, index=0)
     y_axis = st.selectbox("Y-axis", num_cols, index=1)
-    fig = px.scatter(filtered_df, x=x_axis, y=y_axis, hover_data=["last_name, first_name", "year"])
-    st.plotly_chart(fig,)
+    fig = px.scatter(
+        filtered_df,
+        x=x_axis,
+        y=y_axis,
+        hover_data=["last_name, first_name", "year"],
+        trendline="ols"
+    )
+
+    # Calculate R^2
+    try:
+        r2 = r2_score(filtered_df[y_axis], filtered_df[x_axis])
+        st.markdown(f"**R² between {x_axis} and {y_axis}:** {r2:.3f}")
+    except Exception as e:
+        st.warning(f"Could not calculate R²: {e}")
+
+    st.plotly_chart(fig, use_container_width=True)
