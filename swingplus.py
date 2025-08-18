@@ -11,7 +11,7 @@ def load_data():
     df["xwoba_diff"] = df["xwobacon"] - df["predicted_xwobacon"]
     # Round swing_plus to whole number
     if "swing_plus" in df.columns:
-        df["swing_plus"] = df["swing_plus"].round(0).astype(int)
+        df["swing_plus"] = df["swing_plus"].apply(lambda x: int(round(x)))
     # Round xwobacons to 3 decimals
     if "xwobacon" in df.columns:
         df["xwobacon"] = df["xwobacon"].round(3)
