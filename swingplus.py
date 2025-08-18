@@ -1,191 +1,75 @@
-import streamlit as st
 import pandas as pd
-import plotly.express as px
-import statsmodels.api as sm
+import streamlit as st
 
-# Load data
 @st.cache_data
 def load_data():
+    # Load CSV
     df = pd.read_csv("merged_fangraphs_swing_clean.csv")
 
-    # Standardize column names
-    rename_map = {
-        "Name": "player_name",
-        "Season": "year",
-        "Team": "team"
+    # Normalize column names
+    df.columns = df.columns.str.strip().str.lower()
+
+    # Map possible names → pick whichever exists in the file
+    col_map = {
+        "player_name": ["player_name", "last_name, first_name"],
+        "season": ["season", "year"],
+        "team": ["team"],
+        "swing_plus": ["swing_plus"],
+        "xwobacon": ["xwobacon"],
+        "predicted_xwobacon": ["predicted_xwobacon"],
+        "xwoba_diff": ["xwoba_diff"],
     }
-    df = df.rename(columns=rename_map)
 
-    # Create difference column if available
-    if {"xwobacon", "predicted_xwobacon"} <= set(df.columns):
-        df["xwoba_diff"] = df["xwobacon"] - df["predicted_xwobacon"]
+    # Create consistent column set
+    for target, options in col_map.items():
+        for opt in options:
+            if opt in df.columns:
+                df.rename(columns={opt: target}, inplace=True)
+                break
 
-    # Round swing_plus to whole number if available
-    if "swing_plus" in df.columns:
-        df["swing_plus"] = df["swing_plus"].round().astype(int)
-
-    # Round xwobacons to 3 decimals if available
-    for col in ["xwobacon", "predicted_xwobacon", "xwoba_diff"]:
-        if col in df.columns:
-            df[col] = df[col].round(3)
-
-    # Reorder columns with new naming
-    preferred_cols = [
-        "player_name",
-        "year",
-        "team",
-        "swing_plus",
-        "xwobacon",
-        "predicted_xwobacon",
-        "xwoba_diff",
-    ]
-    cols = [c for c in preferred_cols if c in df.columns]
+    # Reorder for readability
+    preferred = list(col_map.keys())
+    cols = [c for c in preferred if c in df.columns]
     remaining = [c for c in df.columns if c not in cols]
     df = df[cols + remaining]
+
     return df
 
-
-# Load the dataframe
+# Load data
 df = load_data()
 
-st.title("Swing+ Explorer")
+st.title("MLB Swing+ Dashboard")
 
 # Sidebar filters
 st.sidebar.header("Filters")
 
-# Year filter
-years = sorted(df["year"].dropna().unique())
-selected_years = st.sidebar.multiselect("Select Year(s)", years, default=years)
+# --- Categorical filters ---
+categorical_cols = df.select_dtypes(include=["object"]).columns.tolist()
+for col in categorical_cols:
+    options = df[col].dropna().unique().tolist()
+    options.sort()
+    selected = st.sidebar.multiselect(f"Select {col}", options, default=options)
+    df = df[df[col].isin(selected)]
 
-# Aggregation options
-agg_option = st.sidebar.radio(
-    "Aggregation Mode",
-    [
-        "None (per player, per season)",
-        "Aggregate across all years per player",
-        "Aggregate by team per season",
-        "Aggregate by team across all seasons",
-    ]
-)
-
-# Team filter if available
-if "team" in df.columns:
-    teams = sorted(df["team"].dropna().unique())
-    selected_teams = st.sidebar.multiselect("Select Team(s)", teams)
-else:
-    selected_teams = []
-
-# Player name filter
-players = sorted(df["player_name"].dropna().unique())
-selected_players = st.sidebar.multiselect("Select Player(s)", players)
-
-# Apply filters
-filtered_df = df[df["year"].isin(selected_years)]
-if selected_players:
-    filtered_df = filtered_df[filtered_df["player_name"].isin(selected_players)]
-if selected_teams:
-    filtered_df = filtered_df[filtered_df["team"].isin(selected_teams)]
-
-# Apply aggregation
-if agg_option == "Aggregate across all years per player":
-    numeric_cols = filtered_df.select_dtypes(include="number").columns
-    filtered_df = (
-        filtered_df.groupby("player_name", as_index=False)[numeric_cols].mean()
-    )
-    filtered_df["year"] = "All"
-    if "swing_plus" in filtered_df.columns:
-        filtered_df["swing_plus"] = filtered_df["swing_plus"].round().astype(int)
-    for col in ["xwobacon", "predicted_xwobacon", "xwoba_diff"]:
-        if col in filtered_df.columns:
-            filtered_df[col] = filtered_df[col].round(3)
-
-elif agg_option == "Aggregate by team per season":
-    numeric_cols = filtered_df.select_dtypes(include="number").columns
-    filtered_df = (
-        filtered_df.groupby(["team", "year"], as_index=False)[numeric_cols].mean()
-    )
-    if "swing_plus" in filtered_df.columns:
-        filtered_df["swing_plus"] = filtered_df["swing_plus"].round().astype(int)
-    for col in ["xwobacon", "predicted_xwobacon", "xwoba_diff"]:
-        if col in filtered_df.columns:
-            filtered_df[col] = filtered_df[col].round(3)
-
-elif agg_option == "Aggregate by team across all seasons":
-    numeric_cols = filtered_df.select_dtypes(include="number").columns
-    filtered_df = filtered_df.groupby("team", as_index=False)[numeric_cols].mean()
-    filtered_df["year"] = "All"
-    if "swing_plus" in filtered_df.columns:
-        filtered_df["swing_plus"] = filtered_df["swing_plus"].round().astype(int)
-    for col in ["xwobacon", "predicted_xwobacon", "xwoba_diff"]:
-        if col in filtered_df.columns:
-            filtered_df[col] = filtered_df[col].round(3)
-
-
-# Numeric range filters
+# --- Numeric filters ---
 st.sidebar.subheader("Numeric Filters")
-for col in filtered_df.select_dtypes(include="number").columns:
-    min_val, max_val = float(filtered_df[col].min()), float(filtered_df[col].max())
-    sel_min, sel_max = st.sidebar.slider(f"{col}", min_val, max_val, (min_val, max_val))
-    filtered_df = filtered_df[
-        (filtered_df[col] >= sel_min) & (filtered_df[col] <= sel_max)
-    ]
-
-# Sorting
-sort_col = st.sidebar.selectbox("Sort by", filtered_df.columns, index=2)
-sort_asc = st.sidebar.radio("Order", ["Ascending", "Descending"]) == "Ascending"
-filtered_df = filtered_df.sort_values(by=sort_col, ascending=sort_asc)
-
-# Player search above table (only if player_name column exists)
-if "player_name" in filtered_df.columns:
-    search_term = st.text_input("Search player by name")
-    if search_term:
-        filtered_df = filtered_df[
-            filtered_df["player_name"].str.contains(search_term, case=False, na=False)
-        ]
-
-# Show data
-st.dataframe(filtered_df, use_container_width=True)
-
-# Download button
-st.download_button(
-    label="Download filtered data as CSV",
-    data=filtered_df.to_csv(index=False),
-    file_name="filtered_swing_predictions.csv",
-    mime="text/csv",
-)
-
-# Scatterplot option
-st.subheader("Scatterplot Explorer")
-num_cols = filtered_df.select_dtypes(include="number").columns
-if len(num_cols) >= 2:
-    x_axis = st.selectbox("X-axis", num_cols, index=0)
-    y_axis = st.selectbox("Y-axis", num_cols, index=1)
-
-    hover_cols = []
-    if "player_name" in filtered_df.columns:
-        hover_cols.append("player_name")
-    if "year" in filtered_df.columns:
-        hover_cols.append("year")
-    if "team" in filtered_df.columns:
-        hover_cols.append("team")
-
-    fig = px.scatter(
-        filtered_df,
-        x=x_axis,
-        y=y_axis,
-        hover_data=hover_cols
+numeric_cols = df.select_dtypes(include="number").columns.tolist()
+for col in numeric_cols:
+    col_data = df[col].dropna()
+    if col_data.empty:
+        continue
+    min_val, max_val = float(col_data.min()), float(col_data.max())
+    if min_val == max_val:
+        continue
+    sel_min, sel_max = st.sidebar.slider(
+        f"{col}",
+        min_val,
+        max_val,
+        (min_val, max_val)
     )
+    df = df[(df[col] >= sel_min) & (df[col] <= sel_max)]
 
-    # Fit regression line
-    try:
-        X = sm.add_constant(filtered_df[x_axis])
-        model = sm.OLS(filtered_df[y_axis], X).fit()
-        slope = model.params[x_axis]
-        intercept = model.params["const"]
-        r2 = model.rsquared
-        st.markdown(f"**Trendline equation:** y = {slope:.3f}x + {intercept:.3f}")
-        st.markdown(f"**R² between {x_axis} and {y_axis}:** {r2:.3f}")
-    except Exception as e:
-        st.warning(f"Could not calculate trendline: {e}")
+# Display table
+st.subheader("Filtered Data")
+st.dataframe(df)
 
-    st.plotly_chart(fig, use_container_width=True)
