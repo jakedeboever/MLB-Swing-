@@ -6,28 +6,32 @@ import statsmodels.api as sm
 # Load data
 @st.cache_data
 def load_data():
-    df = pd.read_csv("swing_predictions.csv")
-    # Create difference column
-    df["xwoba_diff"] = df["xwobacon"] - df["predicted_xwobacon"]
-    # Round swing_plus to whole number
+    df = pd.read_csv("merged_fangraphs_swing_clean.csv")
+
+    # Create difference column if available
+    if {"xwobacon", "predicted_xwobacon"} <= set(df.columns):
+        df["xwoba_diff"] = df["xwobacon"] - df["predicted_xwobacon"]
+
+    # Round swing_plus to whole number if available
     if "swing_plus" in df.columns:
         df["swing_plus"] = df["swing_plus"].round().astype(int)
-    # Round xwobacons to 3 decimals
-    if "xwobacon" in df.columns:
-        df["xwobacon"] = df["xwobacon"].round(3)
-    if "predicted_xwobacon" in df.columns:
-        df["predicted_xwobacon"] = df["predicted_xwobacon"].round(3)
-    if "xwoba_diff" in df.columns:
-        df["xwoba_diff"] = df["xwoba_diff"].round(3)
-    # Reorder columns
+
+    # Round xwobacons to 3 decimals if available
+    for col in ["xwobacon", "predicted_xwobacon", "xwoba_diff"]:
+        if col in df.columns:
+            df[col] = df[col].round(3)
+
+    # Reorder columns if they exist
     cols = [
         "last_name, first_name",
         "year",
-        "swing_plus",
-        "xwobacon",
-        "predicted_xwobacon",
-        "xwoba_diff"
+        "team" if "team" in df.columns else None,
+        "swing_plus" if "swing_plus" in df.columns else None,
+        "xwobacon" if "xwobacon" in df.columns else None,
+        "predicted_xwobacon" if "predicted_xwobacon" in df.columns else None,
+        "xwoba_diff" if "xwoba_diff" in df.columns else None,
     ]
+    cols = [c for c in cols if c is not None]
     remaining = [c for c in df.columns if c not in cols]
     df = df[cols + remaining]
     return df
@@ -45,6 +49,13 @@ years = sorted(df["year"].dropna().unique())
 selected_years = st.sidebar.multiselect("Select Year(s)", years, default=years)
 avg_by_player = st.sidebar.checkbox("Aggregate across all years per player")
 
+# Team filter if available
+if "team" in df.columns:
+    teams = sorted(df["team"].dropna().unique())
+    selected_teams = st.sidebar.multiselect("Select Team(s)", teams)
+else:
+    selected_teams = []
+
 # Player name filter
 players = sorted(df["last_name, first_name"].dropna().unique())
 selected_players = st.sidebar.multiselect("Select Player(s)", players)
@@ -53,16 +64,16 @@ selected_players = st.sidebar.multiselect("Select Player(s)", players)
 filtered_df = df[df["year"].isin(selected_years)]
 if selected_players:
     filtered_df = filtered_df[filtered_df["last_name, first_name"].isin(selected_players)]
+if selected_teams:
+    filtered_df = filtered_df[filtered_df["team"].isin(selected_teams)]
 
 # Aggregate by player if selected
 if avg_by_player:
     numeric_cols = filtered_df.select_dtypes(include="number").columns
     filtered_df = filtered_df.groupby("last_name, first_name", as_index=False)[numeric_cols].mean()
     filtered_df["year"] = "All"
-    # Ensure swing_plus is whole number after aggregation
     if "swing_plus" in filtered_df.columns:
         filtered_df["swing_plus"] = filtered_df["swing_plus"].round().astype(int)
-    # Ensure xwobacons rounded after aggregation
     for col in ["xwobacon", "predicted_xwobacon", "xwoba_diff"]:
         if col in filtered_df.columns:
             filtered_df[col] = filtered_df[col].round(3)
@@ -77,7 +88,6 @@ for col in filtered_df.select_dtypes(include="number").columns:
 # Sorting
 sort_col = st.sidebar.selectbox("Sort by", filtered_df.columns, index=2)
 sort_asc = st.sidebar.radio("Order", ["Ascending", "Descending"]) == "Ascending"
-
 filtered_df = filtered_df.sort_values(by=sort_col, ascending=sort_asc)
 
 # Player search above table
@@ -106,10 +116,10 @@ if len(num_cols) >= 2:
         filtered_df,
         x=x_axis,
         y=y_axis,
-        hover_data=["last_name, first_name", "year"]
+        hover_data=["last_name, first_name", "year"] + (["team"] if "team" in filtered_df.columns else [])
     )
 
-    # Fit regression line using statsmodels for stability
+    # Fit regression line
     try:
         X = sm.add_constant(filtered_df[x_axis])
         model = sm.OLS(filtered_df[y_axis], X).fit()
@@ -122,3 +132,4 @@ if len(num_cols) >= 2:
         st.warning(f"Could not calculate trendline: {e}")
 
     st.plotly_chart(fig, use_container_width=True)
+
