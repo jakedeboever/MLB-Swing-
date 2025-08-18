@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
 import statsmodels.api as sm
 
 # Load data
@@ -86,13 +85,8 @@ search_term = st.text_input("Search player by name")
 if search_term:
     filtered_df = filtered_df[filtered_df["last_name, first_name"].str.contains(search_term, case=False, na=False)]
 
-# Show data with color formatting
-st.dataframe(
-    filtered_df.style.background_gradient(
-        subset=["swing_plus"], cmap="RdBu_r", vmin=filtered_df["swing_plus"].min(), vmax=filtered_df["swing_plus"].max()
-    ),
-    use_container_width=True
-)
+# Show data
+st.dataframe(filtered_df, use_container_width=True)
 
 # Download button
 st.download_button(
@@ -128,25 +122,3 @@ if len(num_cols) >= 2:
         st.warning(f"Could not calculate trendline: {e}")
 
     st.plotly_chart(fig, use_container_width=True)
-
-# Player Comparison
-st.subheader("Compare Two Players")
-compare_players = st.multiselect("Select two players to compare", players, max_selections=2)
-if len(compare_players) == 2:
-    comp_df = df[df["last_name, first_name"].isin(compare_players)]
-    st.write(comp_df)
-    # Radar chart on main stats
-    stats = ["swing_plus", "xwobacon", "predicted_xwobacon", "xwoba_diff"]
-    radar = go.Figure()
-    for player in compare_players:
-        pdata = comp_df[comp_df["last_name, first_name"] == player][stats].mean()
-        radar.add_trace(go.Scatterpolar(r=pdata.values, theta=stats, fill='toself', name=player))
-    st.plotly_chart(radar, use_container_width=True)
-
-# Player Trend Over Time
-st.subheader("Player Trend Over Time")
-trend_player = st.selectbox("Select a player for trendline", players)
-if trend_player:
-    trend_df = df[df["last_name, first_name"] == trend_player].sort_values("year")
-    tfig = px.line(trend_df, x="year", y="swing_plus", markers=True, title=f"Swing+ Trend for {trend_player}")
-    st.plotly_chart(tfig, use_container_width=True)
