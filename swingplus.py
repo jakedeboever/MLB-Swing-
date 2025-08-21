@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import statsmodels.api as sm
+import numpy as np
 
 # Load data
 @st.cache_data
@@ -116,7 +117,12 @@ if len(num_cols) >= 2:
         slope = model.params[x_axis]
         intercept = model.params["const"]
         r2 = model.rsquared
+        
+        # Calculate R value (correlation coefficient)
+        r = np.corrcoef(filtered_df[x_axis], filtered_df[y_axis])[0, 1]
+        
         st.markdown(f"**Trendline equation:** y = {slope:.3f}x + {intercept:.3f}")
+        st.markdown(f"**R (correlation coefficient):** {r:.3f}")
         st.markdown(f"**R² between {x_axis} and {y_axis}:** {r2:.3f}")
     except Exception as e:
         st.warning(f"Could not calculate trendline: {e}")
